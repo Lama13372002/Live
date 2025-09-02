@@ -8,7 +8,7 @@ import {GoogleGenAI, LiveServerMessage, Modality, Session} from '@google/genai';
 import {LitElement, css, html} from 'lit';
 import {customElement, state} from 'lit/decorators.js';
 import {createBlob, decode, decodeAudioData} from './utils';
-import './visual-3d';
+
 
 const AVAILABLE_VOICES = ['Orus', 'Aries', 'Leo', 'Lyra', 'Taurus'];
 const DEFAULT_PERSONALITY = {
@@ -482,6 +482,79 @@ export class GdmLiveAudio extends LitElement {
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+    }
+
+    /* Simple CSS Visualizer */
+    .simple-visualizer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    .audio-wave {
+      position: relative;
+      width: 200px;
+      height: 200px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .wave-circle {
+      position: absolute;
+      border: 2px solid rgba(74, 144, 226, 0.3);
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(74, 144, 226, 0.1) 0%, transparent 70%);
+    }
+
+    .wave-circle:nth-child(1) {
+      width: 60px;
+      height: 60px;
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    .wave-circle.wave-2 {
+      width: 120px;
+      height: 120px;
+      animation: pulse 2s ease-in-out infinite 0.5s;
+    }
+
+    .wave-circle.wave-3 {
+      width: 180px;
+      height: 180px;
+      animation: pulse 2s ease-in-out infinite 1s;
+    }
+
+    .audio-wave.recording .wave-circle {
+      border-color: rgba(255, 100, 100, 0.6);
+      background: radial-gradient(circle, rgba(255, 100, 100, 0.2) 0%, transparent 70%);
+      animation-duration: 1s;
+    }
+
+    .audio-wave.recording .wave-circle:nth-child(1) {
+      box-shadow: 0 0 20px rgba(255, 100, 100, 0.4);
+    }
+
+    @keyframes pulse {
+      0% {
+        transform: scale(0.8);
+        opacity: 1;
+      }
+      50% {
+        transform: scale(1.2);
+        opacity: 0.6;
+      }
+      100% {
+        transform: scale(0.8);
+        opacity: 1;
+      }
     }
   `;
 
@@ -1182,11 +1255,13 @@ export class GdmLiveAudio extends LitElement {
         </div>
 
         <div id="status">${this.error || this.status}</div>
-        <gdm-live-audio-visuals-3d
-          class=${this.isArModeActive ? 'ar-active-visualizer' : ''}
-          .inputNode=${this.inputNode}
-          .outputNode=${this.outputNode}
-        ></gdm-live-audio-visuals-3d>
+        <div class="simple-visualizer ${this.isArModeActive ? 'ar-active-visualizer' : ''}">
+          <div class="audio-wave ${this.isRecording ? 'recording' : ''}">
+            <div class="wave-circle"></div>
+            <div class="wave-circle wave-2"></div>
+            <div class="wave-circle wave-3"></div>
+          </div>
+        </div>
       </div>
     `;
   }
