@@ -25,6 +25,7 @@ export class GdmLiveAudio extends LitElement {
   @state() personalities: Array<{name: string; prompt: string}> = [];
   @state() selectedPersonality: {name: string; prompt: string} | null = null;
   @state() isPersonalityModalOpen = false;
+  @state() uploadedImage: {data: string; mimeType: string} | null = null;
 
   private client: GoogleGenAI;
   private session: Session;
@@ -82,15 +83,18 @@ export class GdmLiveAudio extends LitElement {
         font-size: 24px;
         padding: 0;
         margin: 0;
-
-        &:hover {
-          background: rgba(255, 255, 255, 0.2);
-        }
+        display: flex;
+        align-items: center;
+        justify-content: center;
       }
 
-      button[disabled] {
-        display: none;
+      button:hover {
+        background: rgba(255, 255, 255, 0.2);
       }
+    }
+
+    button[disabled] {
+      display: none;
     }
 
     .control-group {
@@ -275,6 +279,57 @@ export class GdmLiveAudio extends LitElement {
       background: rgba(255, 255, 255, 0.1);
       border: 1px solid rgba(255, 255, 255, 0.2);
     }
+
+    .action-buttons {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .image-preview-container {
+      position: absolute;
+      bottom: 30vh;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+    }
+
+    .image-preview {
+      position: relative;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-radius: 8px;
+      overflow: hidden;
+      background: rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(5px);
+    }
+
+    .image-preview img {
+      display: block;
+      max-width: 150px;
+      max-height: 150px;
+      object-fit: contain;
+    }
+
+    .remove-image-btn {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      border: none;
+      background: rgba(0, 0, 0, 0.7);
+      color: white;
+      font-size: 16px;
+      line-height: 24px;
+      text-align: center;
+      cursor: pointer;
+      padding: 0;
+    }
+
+    .remove-image-btn:hover {
+      background: rgba(255, 20, 20, 0.8);
+    }
   `;
 
   constructor() {
@@ -290,8 +345,9 @@ export class GdmLiveAudio extends LitElement {
   private async initClient() {
     this.initAudio();
 
+    // FIX: Use process.env.API_KEY per coding guidelines.
     this.client = new GoogleGenAI({
-      apiKey: process.env.GEMINI_API_KEY,
+      apiKey: process.env.API_KEY,
     });
 
     this.outputNode.connect(this.outputAudioContext.destination);
@@ -300,7 +356,7 @@ export class GdmLiveAudio extends LitElement {
   }
 
   private async initSession() {
-    const model = 'gemini-2.5-flash-preview-native-audio-dialog';
+    const model = 'gemini-2.5-flash';
 
     try {
       this.session = await this.client.live.connect({
@@ -491,6 +547,52 @@ export class GdmLiveAudio extends LitElement {
     this.reset();
   }
 
+  // Image Handling
+  private handleImageUpload(e: Event) {
+    const input = e.target as HTMLInputElement;
+    if (input.files && input.files[0]) {
+      const file = input.files[0];
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const dataUrl = event.target!.result as string;
+        const [header, base64Data] = dataUrl.split(',');
+        const mimeType = header.match(/:(.*?);/)![1];
+
+        this.uploadedImage = {data: base64Data, mimeType};
+        this.sendImageToSession();
+      };
+      reader.readAsDataURL(file);
+      input.value = ''; // Reset input so same file can be re-uploaded
+    }
+  }
+
+  private async sendImageToSession() {
+    if (!this.session || !this.uploadedImage) return;
+
+    this.updateStatus('Sending image...');
+    try {
+      // FIX: The method to send non-streaming input to a Session is `sendInput`.
+      await this.session.sendInput({
+        parts: [
+          {
+            inlineData: {
+              data: this.uploadedImage.data,
+              mimeType: this.uploadedImage.mimeType,
+            },
+          },
+        ],
+      });
+      this.updateStatus('Image sent. Ready to chat.');
+    } catch (e) {
+      this.updateError(`Error sending image: ${e.message}`);
+    }
+  }
+
+  private removeImage() {
+    this.uploadedImage = null;
+    this.reset(); // Reset the session to clear the image context
+  }
+
   // Personality Management
   private loadPersonalities() {
     const stored = localStorage.getItem('gdm-personalities');
@@ -507,7 +609,10 @@ export class GdmLiveAudio extends LitElement {
   }
 
   private savePersonalities() {
-    localStorage.setItem('gdm-personalities', JSON.stringify(this.personalities));
+    localStorage.setItem(
+      'gdm-personalities',
+      JSON.stringify(this.personalities),
+    );
   }
 
   private saveSelectedPersonality() {
@@ -635,6 +740,27 @@ export class GdmLiveAudio extends LitElement {
     return html`
       <div>
         ${this.renderPersonalityModal()}
+        <div class="image-preview-container">
+          ${this.uploadedImage
+            ? html`
+                <div class="image-preview">
+                  <img
+                    src="data:${this.uploadedImage.mimeType};base64,${this
+                      .uploadedImage.data}"
+                    alt="Uploaded image preview"
+                  />
+                  <button
+                    @click=${this.removeImage}
+                    class="remove-image-btn"
+                    aria-label="Remove Image"
+                  >
+                    &times;
+                  </button>
+                </div>
+              `
+            : ''}
+        </div>
+
         <div class="controls">
           <div class="control-group">
             <label for="voice-select">Voice:</label>
@@ -661,24 +787,54 @@ export class GdmLiveAudio extends LitElement {
             <button @click=${this.openPersonalityModal}>Manage</button>
           </div>
 
-          <button
-            id="resetButton"
-            @click=${this.reset}
-            ?disabled=${this.isRecording}
-            aria-label="Reset Session"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              height="40px"
-              viewBox="0 -960 960 960"
-              width="40px"
-              fill="#ffffff"
+          <div class="action-buttons">
+            <input
+              type="file"
+              id="imageUpload"
+              @change=${this.handleImageUpload}
+              accept="image/*"
+              style="display: none;"
+            />
+            <button
+              id="uploadButton"
+              @click=${() =>
+                (
+                  this.shadowRoot?.getElementById('imageUpload') as HTMLElement
+                )?.click()}
+              ?disabled=${this.isRecording}
+              aria-label="Upload Image"
             >
-              <path
-                d="M480-160q-134 0-227-93t-93-227q0-134 93-227t227-93q69 0 132 28.5T720-690v-110h80v280H520v-80h168q-32-56-87.5-88T480-720q-100 0-170 70t-70 170q0 100 70 170t170 70q77 0 139-44t87-116h84q-28 106-114 173t-196 67Z"
-              />
-            </svg>
-          </button>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                height="40px"
+                viewBox="0 -960 960 960"
+                width="40px"
+                fill="#ffffff"
+              >
+                <path
+                  d="M220-80q-24 0-42-18t-18-42v-680q0-24 18-42t42-18h520q24 0 42 18t18 42v680q0 24-18 42t-42 18H220Zm0-60h520v-680H220v680Zm80-160h360q17 0 28.5-11.5T700-340q0-17-11.5-28.5T660-380H299.78q-16.53 0-28.16 11.64Q260-356.73 260-340q0 17 11.5 28.5T300-300Zm0-160h360q17 0 28.5-11.5T700-500q0-17-11.5-28.5T660-540H300q-17 0-28.5 11.5T260-500q0 17 11.5 28.5T300-460Zm280-200q25 0 42.5-17.5T640-720q0-25-17.5-42.5T580-780q-25 0-42.5 17.5T520-720q0 25 17.5 42.5T580-660ZM220-140v-680 680Z"
+                />
+              </svg>
+            </button>
+            <button
+              id="resetButton"
+              @click=${this.reset}
+              ?disabled=${this.isRecording}
+              aria-label="Reset Session"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                height="40px"
+                viewBox="0 -960 960 960"
+                width="40px"
+                fill="#ffffff"
+              >
+                <path
+                  d="M480-160q-134 0-227-93t-93-227q0-134 93-227t227-93q69 0 132 28.5T720-690v-110h80v280H520v-80h168q-32-56-87.5-88T480-720q-100 0-170 70t-70 170q0 100 70 170t170 70q77 0 139-44t87-116h84q-28 106-114 173t-196 67Z"
+                />
+              </svg>
+            </button>
+          </div>
           <button
             id="startButton"
             @click=${this.startRecording}
