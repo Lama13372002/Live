@@ -74,8 +74,13 @@ export class GdmLiveAudio extends LitElement {
       width: 100%;
       height: 100%;
       object-fit: cover;
-      z-index: -1;
+      z-index: 0;
       transform: scaleX(-1); /* Mirror view for selfie cam */
+      background: #000;
+    }
+
+    #ar-video[hidden] {
+      display: none;
     }
 
     .ar-active-visualizer {
