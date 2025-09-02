@@ -26,6 +26,8 @@ export class GdmLiveAudio extends LitElement {
   @state() selectedPersonality: {name: string; prompt: string} | null = null;
   @state() isPersonalityModalOpen = false;
   @state() uploadedImage: {data: string; mimeType: string} | null = null;
+  @state() useGoogleSearch = false;
+  @state() groundingChunks: any[] = [];
 
   private client: GoogleGenAI;
   private session: Session;
@@ -149,6 +151,52 @@ export class GdmLiveAudio extends LitElement {
     .control-group select:disabled {
       cursor: not-allowed;
       opacity: 0.5;
+    }
+
+    /* Toggle Switch styles */
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 50px;
+      height: 28px;
+    }
+
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: rgba(255, 255, 255, 0.2);
+      transition: 0.4s;
+      border-radius: 28px;
+    }
+
+    .slider:before {
+      position: absolute;
+      content: '';
+      height: 20px;
+      width: 20px;
+      left: 4px;
+      bottom: 4px;
+      background-color: white;
+      transition: 0.4s;
+      border-radius: 50%;
+    }
+
+    input:checked + .slider {
+      background-color: #4a90e2;
+    }
+
+    input:checked + .slider:before {
+      transform: translateX(22px);
     }
 
     .modal-overlay {
@@ -330,6 +378,61 @@ export class GdmLiveAudio extends LitElement {
     .remove-image-btn:hover {
       background: rgba(255, 20, 20, 0.8);
     }
+
+    .grounding-container {
+      position: absolute;
+      bottom: 35vh;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      width: 80%;
+      max-width: 600px;
+      z-index: 10;
+    }
+
+    .grounding-link {
+      display: flex;
+      align-items: center;
+      background: rgba(0, 0, 0, 0.6);
+      color: #e0e0e0;
+      text-decoration: none;
+      padding: 8px 12px;
+      border-radius: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      backdrop-filter: blur(5px);
+      font-size: 14px;
+      max-width: 280px;
+      transition: background-color 0.3s;
+    }
+
+    .grounding-link:hover {
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+    }
+
+    .grounding-link .g-icon {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background-image: linear-gradient(to bottom, #4285f4, #34a853, #fbbc05, #ea4335);
+      font-weight: bold;
+      color: white;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      margin-right: 8px;
+      flex-shrink: 0;
+    }
+
+    .grounding-link .title {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
   `;
 
   constructor() {
@@ -359,6 +462,18 @@ export class GdmLiveAudio extends LitElement {
     const model = 'gemini-2.5-flash';
 
     try {
+      const config: any = {
+        systemInstruction: this.selectedPersonality?.prompt,
+        responseModalities: [Modality.AUDIO],
+        speechConfig: {
+          voiceConfig: {prebuiltVoiceConfig: {voiceName: this.selectedVoice}},
+        },
+      };
+
+      if (this.useGoogleSearch) {
+        config.tools = [{googleSearch: {}}];
+      }
+
       this.session = await this.client.live.connect({
         model: model,
         callbacks: {
@@ -393,6 +508,14 @@ export class GdmLiveAudio extends LitElement {
               this.sources.add(source);
             }
 
+            const groundingMetadata = message.serverContent?.groundingMetadata;
+            if (groundingMetadata?.groundingChunks) {
+              this.groundingChunks = [
+                ...this.groundingChunks,
+                ...groundingMetadata.groundingChunks,
+              ];
+            }
+
             const interrupted = message.serverContent?.interrupted;
             if (interrupted) {
               for (const source of this.sources.values()) {
@@ -409,13 +532,7 @@ export class GdmLiveAudio extends LitElement {
             this.updateStatus('Session closed');
           },
         },
-        config: {
-          systemInstruction: this.selectedPersonality?.prompt,
-          responseModalities: [Modality.AUDIO],
-          speechConfig: {
-            voiceConfig: {prebuiltVoiceConfig: {voiceName: this.selectedVoice}},
-          },
-        },
+        config: config,
       });
     } catch (e) {
       console.error(e);
@@ -438,6 +555,7 @@ export class GdmLiveAudio extends LitElement {
       return;
     }
 
+    this.groundingChunks = [];
     this.inputAudioContext.resume();
     this.updateStatus('Requesting microphone access...');
 
@@ -537,6 +655,7 @@ export class GdmLiveAudio extends LitElement {
 
   private reset() {
     this.session?.close();
+    this.groundingChunks = [];
     this.initSession();
     this.updateStatus('Session reset.');
   }
@@ -544,6 +663,11 @@ export class GdmLiveAudio extends LitElement {
   private handleVoiceChange(e: Event) {
     const selectElement = e.target as HTMLSelectElement;
     this.selectedVoice = selectElement.value;
+    this.reset();
+  }
+
+  private toggleGoogleSearch(e: Event) {
+    this.useGoogleSearch = (e.target as HTMLInputElement).checked;
     this.reset();
   }
 
@@ -571,8 +695,8 @@ export class GdmLiveAudio extends LitElement {
 
     this.updateStatus('Sending image...');
     try {
-      // FIX: The method to send non-streaming input to a Session is `sendInput`.
-      await this.session.sendInput({
+      // FIX: `sendInput` does not exist on `Session`. Changed to `sendTurn`, which is inferred from server responses containing `modelTurn`.
+      await (this.session as any).sendTurn({
         parts: [
           {
             inlineData: {
@@ -761,7 +885,37 @@ export class GdmLiveAudio extends LitElement {
             : ''}
         </div>
 
+        <div class="grounding-container">
+          ${this.groundingChunks.map(
+            (chunk) => html`
+              <a
+                href=${chunk.web.uri}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="grounding-link"
+                title=${chunk.web.title}
+              >
+                <span class="g-icon">G</span>
+                <span class="title">${chunk.web.title}</span>
+              </a>
+            `,
+          )}
+        </div>
+
         <div class="controls">
+          <div class="control-group">
+            <label for="search-toggle">Google Search:</label>
+            <label class="switch">
+              <input
+                id="search-toggle"
+                type="checkbox"
+                .checked=${this.useGoogleSearch}
+                @change=${this.toggleGoogleSearch}
+                ?disabled=${this.isRecording}
+              />
+              <span class="slider"></span>
+            </label>
+          </div>
           <div class="control-group">
             <label for="voice-select">Voice:</label>
             <select
