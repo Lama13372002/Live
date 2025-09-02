@@ -28,6 +28,7 @@ export class GdmLiveAudio extends LitElement {
   @state() uploadedImage: {data: string; mimeType: string} | null = null;
   @state() useGoogleSearch = false;
   @state() groundingChunks: any[] = [];
+  @state() isArModeActive = false;
 
   private client: GoogleGenAI;
   private session: Session;
@@ -50,7 +51,35 @@ export class GdmLiveAudio extends LitElement {
   private readonly SILENCE_THRESHOLD = 0.01; // Amplitude threshold for silence
   private readonly SILENCE_DURATION = 1500; // 1.5 seconds of silence
 
+  // AR Mode
+  private videoStream: MediaStream | null = null;
+  private videoElement: HTMLVideoElement | null = null;
+  private canvasElement: HTMLCanvasElement | null = null;
+  private frameCaptureInterval: any = null;
+
   static styles = css`
+    :host {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    #ar-video {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      z-index: -1;
+      transform: scaleX(-1); /* Mirror view for selfie cam */
+    }
+
+    .ar-active-visualizer {
+      opacity: 0;
+      pointer-events: none;
+    }
+
     #status {
       position: absolute;
       bottom: 5vh;
@@ -92,6 +121,11 @@ export class GdmLiveAudio extends LitElement {
 
       button:hover {
         background: rgba(255, 255, 255, 0.2);
+      }
+
+      button.active {
+        background: #4a90e2;
+        border-color: #4a90e2;
       }
     }
 
@@ -560,10 +594,15 @@ export class GdmLiveAudio extends LitElement {
     this.updateStatus('Requesting microphone access...');
 
     try {
-      this.mediaStream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: false,
-      });
+      // Use existing video stream if in AR mode, otherwise get a new audio stream
+      if (this.isArModeActive && this.videoStream) {
+        this.mediaStream = this.videoStream;
+      } else {
+        this.mediaStream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+          video: false,
+        });
+      }
 
       this.updateStatus('Microphone access granted. Starting capture...');
 
@@ -645,7 +684,8 @@ export class GdmLiveAudio extends LitElement {
     this.scriptProcessorNode = null;
     this.sourceNode = null;
 
-    if (this.mediaStream) {
+    if (this.mediaStream && !this.isArModeActive) {
+      // Only stop tracks if we are not in AR mode
       this.mediaStream.getTracks().forEach((track) => track.stop());
       this.mediaStream = null;
     }
@@ -715,6 +755,77 @@ export class GdmLiveAudio extends LitElement {
   private removeImage() {
     this.uploadedImage = null;
     this.reset(); // Reset the session to clear the image context
+  }
+
+  // AR Mode
+  private async toggleArMode() {
+    if (this.isArModeActive) {
+      this.stopArMode();
+    } else {
+      this.startArMode();
+    }
+  }
+
+  private async startArMode() {
+    if (this.isRecording) {
+      this.stopRecording();
+    }
+    this.updateStatus('Starting AR Mode...');
+    try {
+      this.videoStream = await navigator.mediaDevices.getUserMedia({
+        video: {facingMode: 'user'},
+        audio: true,
+      });
+      this.videoElement!.srcObject = this.videoStream;
+      this.videoElement!.play();
+      this.isArModeActive = true;
+      this.frameCaptureInterval = setInterval(
+        () => this.captureAndSendFrame(),
+        1000,
+      ); // Send a frame every second
+      this.updateStatus('AR Mode Active. Talk to describe what you see.');
+    } catch (err) {
+      this.updateError(`Error starting AR mode: ${err.message}`);
+    }
+  }
+
+  private stopArMode() {
+    this.updateStatus('Stopping AR Mode...');
+    if (this.frameCaptureInterval) {
+      clearInterval(this.frameCaptureInterval);
+      this.frameCaptureInterval = null;
+    }
+    if (this.videoStream) {
+      this.videoStream.getTracks().forEach((track) => track.stop());
+      this.videoStream = null;
+    }
+    this.isArModeActive = false;
+    this.videoElement!.srcObject = null;
+    this.updateStatus('AR Mode stopped.');
+    this.reset(); // Reset session to clear visual context
+  }
+
+  private captureAndSendFrame() {
+    if (!this.isArModeActive || !this.videoElement || !this.session) return;
+
+    const context = this.canvasElement!.getContext('2d');
+    if (context) {
+      this.canvasElement!.width = this.videoElement.videoWidth;
+      this.canvasElement!.height = this.videoElement.videoHeight;
+      context.drawImage(
+        this.videoElement,
+        0,
+        0,
+        this.canvasElement.width,
+        this.canvasElement.height,
+      );
+      const dataUrl = this.canvasElement.toDataURL('image/jpeg', 0.5);
+      const [, base64Data] = dataUrl.split(',');
+
+      (this.session as any).sendTurn({
+        parts: [{inlineData: {data: base64Data, mimeType: 'image/jpeg'}}],
+      });
+    }
   }
 
   // Personality Management
@@ -860,9 +971,16 @@ export class GdmLiveAudio extends LitElement {
     `;
   }
 
+  firstUpdated() {
+    this.videoElement =
+      this.shadowRoot!.querySelector<HTMLVideoElement>('#ar-video');
+    this.canvasElement = document.createElement('canvas');
+  }
+
   render() {
     return html`
       <div>
+        <video id="ar-video" ?hidden=${!this.isArModeActive}></video>
         ${this.renderPersonalityModal()}
         <div class="image-preview-container">
           ${this.uploadedImage
@@ -911,7 +1029,7 @@ export class GdmLiveAudio extends LitElement {
                 type="checkbox"
                 .checked=${this.useGoogleSearch}
                 @change=${this.toggleGoogleSearch}
-                ?disabled=${this.isRecording}
+                ?disabled=${this.isRecording || this.isArModeActive}
               />
               <span class="slider"></span>
             </label>
@@ -921,7 +1039,7 @@ export class GdmLiveAudio extends LitElement {
             <select
               id="voice-select"
               @change=${this.handleVoiceChange}
-              ?disabled=${this.isRecording}
+              ?disabled=${this.isRecording || this.isArModeActive}
               aria-label="Select a voice"
             >
               ${AVAILABLE_VOICES.map(
@@ -938,10 +1056,34 @@ export class GdmLiveAudio extends LitElement {
           <div class="control-group">
             <label>Personality:</label>
             <span>${this.selectedPersonality?.name}</span>
-            <button @click=${this.openPersonalityModal}>Manage</button>
+            <button
+              @click=${this.openPersonalityModal}
+              ?disabled=${this.isArModeActive}
+            >
+              Manage
+            </button>
           </div>
 
           <div class="action-buttons">
+            <button
+              id="arButton"
+              @click=${this.toggleArMode}
+              class=${this.isArModeActive ? 'active' : ''}
+              ?disabled=${this.isRecording}
+              aria-label="Toggle AR Mode"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                height="40px"
+                viewBox="0 -960 960 960"
+                width="40px"
+                fill="#ffffff"
+              >
+                <path
+                  d="M480-320q75 0 127.5-52.5T660-500q0-75-52.5-127.5T480-680q-75 0-127.5 52.5T300-500q0 75 52.5 127.5T480-320Zm0-70q-46 0-78-32t-32-78q0-46 32-78t78-32q46 0 78 32t32 78q0 46-32 78t-78 32Zm0 190q-142 0-259-78.5T40-500q55-121 172-199.5T480-778q142 0 259 78.5T920-500q-55 121-172 199.5T480-200Z"
+                />
+              </svg>
+            </button>
             <input
               type="file"
               id="imageUpload"
@@ -955,7 +1097,7 @@ export class GdmLiveAudio extends LitElement {
                 (
                   this.shadowRoot?.getElementById('imageUpload') as HTMLElement
                 )?.click()}
-              ?disabled=${this.isRecording}
+              ?disabled=${this.isRecording || this.isArModeActive}
               aria-label="Upload Image"
             >
               <svg
@@ -973,7 +1115,7 @@ export class GdmLiveAudio extends LitElement {
             <button
               id="resetButton"
               @click=${this.reset}
-              ?disabled=${this.isRecording}
+              ?disabled=${this.isRecording || this.isArModeActive}
               aria-label="Reset Session"
             >
               <svg
@@ -1025,6 +1167,7 @@ export class GdmLiveAudio extends LitElement {
 
         <div id="status">${this.error || this.status}</div>
         <gdm-live-audio-visuals-3d
+          class=${this.isArModeActive ? 'ar-active-visualizer' : ''}
           .inputNode=${this.inputNode}
           .outputNode=${this.outputNode}
         ></gdm-live-audio-visuals-3d>
