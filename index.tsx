@@ -62,6 +62,9 @@ export class GdmLiveAudio extends LitElement {
       width: 100%;
       height: 100%;
       display: block;
+      background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+      position: relative;
+      overflow: hidden;
     }
 
     #ar-video {
@@ -88,6 +91,11 @@ export class GdmLiveAudio extends LitElement {
       z-index: 10;
       text-align: center;
       color: white;
+      background: rgba(0, 0, 0, 0.3);
+      padding: 8px 16px;
+      border-radius: 8px;
+      margin: 0 20px;
+      backdrop-filter: blur(10px);
     }
 
     .controls {
@@ -104,10 +112,10 @@ export class GdmLiveAudio extends LitElement {
 
       button {
         outline: none;
-        border: 1px solid rgba(255, 255, 255, 0.2);
+        border: 2px solid #4a90e2;
         color: white;
         border-radius: 12px;
-        background: rgba(255, 255, 255, 0.1);
+        background: rgba(74, 144, 226, 0.8);
         width: 64px;
         height: 64px;
         cursor: pointer;
@@ -117,15 +125,19 @@ export class GdmLiveAudio extends LitElement {
         display: flex;
         align-items: center;
         justify-content: center;
+        transition: all 0.3s ease;
+        backdrop-filter: blur(10px);
       }
 
       button:hover {
-        background: rgba(255, 255, 255, 0.2);
+        background: rgba(74, 144, 226, 1);
+        transform: scale(1.05);
       }
 
       button.active {
         background: #4a90e2;
         border-color: #4a90e2;
+        box-shadow: 0 0 20px rgba(74, 144, 226, 0.6);
       }
     }
 
@@ -140,24 +152,29 @@ export class GdmLiveAudio extends LitElement {
       justify-content: center;
       margin-bottom: 10px;
       color: white;
-      background: rgba(255, 255, 255, 0.1);
+      background: rgba(0, 0, 0, 0.4);
       border-radius: 8px;
-      padding: 8px 12px;
-      border: 1px solid rgba(255, 255, 255, 0.2);
+      padding: 12px 16px;
+      border: 2px solid rgba(74, 144, 226, 0.5);
+      backdrop-filter: blur(10px);
     }
 
     .control-group label {
       font-weight: bold;
+      color: white;
+      text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.7);
     }
 
     .control-group select,
     .control-group button {
-      background: transparent;
+      background: rgba(0, 0, 0, 0.3);
       color: white;
-      border: none;
+      border: 1px solid rgba(74, 144, 226, 0.5);
       font-size: 16px;
       cursor: pointer;
       outline: none;
+      border-radius: 4px;
+      padding: 4px 8px;
     }
 
     .control-group select {
@@ -166,20 +183,19 @@ export class GdmLiveAudio extends LitElement {
       appearance: none;
       background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
       background-repeat: no-repeat;
-      background-position: right 0 center;
+      background-position: right 8px center;
       background-size: 1em;
-      padding-right: 1.5em;
+      padding-right: 2em;
     }
 
     .control-group button {
-      padding: 4px 8px;
-      border-radius: 4px;
-      border: 1px solid rgba(255, 255, 255, 0.3);
       margin-left: 8px;
+      transition: all 0.3s ease;
     }
 
     .control-group button:hover {
-      background: rgba(255, 255, 255, 0.2);
+      background: rgba(74, 144, 226, 0.7);
+      border-color: #4a90e2;
     }
 
     .control-group select:disabled {
