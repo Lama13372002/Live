@@ -8,7 +8,7 @@ import {GoogleGenAI, LiveServerMessage, Modality, Session} from '@google/genai';
 import {LitElement, css, html} from 'lit';
 import {customElement, state} from 'lit/decorators.js';
 import {createBlob, decode, decodeAudioData} from './utils';
-
+import './visual-3d';
 
 const AVAILABLE_VOICES = ['Orus', 'Aries', 'Leo', 'Lyra', 'Taurus'];
 const DEFAULT_PERSONALITY = {
@@ -62,9 +62,6 @@ export class GdmLiveAudio extends LitElement {
       width: 100%;
       height: 100%;
       display: block;
-      background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-      position: relative;
-      overflow: hidden;
     }
 
     #ar-video {
@@ -74,13 +71,8 @@ export class GdmLiveAudio extends LitElement {
       width: 100%;
       height: 100%;
       object-fit: cover;
-      z-index: 0;
+      z-index: -1;
       transform: scaleX(-1); /* Mirror view for selfie cam */
-      background: #000;
-    }
-
-    #ar-video[hidden] {
-      display: none;
     }
 
     .ar-active-visualizer {
@@ -96,11 +88,6 @@ export class GdmLiveAudio extends LitElement {
       z-index: 10;
       text-align: center;
       color: white;
-      background: rgba(0, 0, 0, 0.3);
-      padding: 8px 16px;
-      border-radius: 8px;
-      margin: 0 20px;
-      backdrop-filter: blur(10px);
     }
 
     .controls {
@@ -117,10 +104,10 @@ export class GdmLiveAudio extends LitElement {
 
       button {
         outline: none;
-        border: 2px solid #4a90e2;
+        border: 1px solid rgba(255, 255, 255, 0.2);
         color: white;
         border-radius: 12px;
-        background: rgba(74, 144, 226, 0.8);
+        background: rgba(255, 255, 255, 0.1);
         width: 64px;
         height: 64px;
         cursor: pointer;
@@ -130,19 +117,15 @@ export class GdmLiveAudio extends LitElement {
         display: flex;
         align-items: center;
         justify-content: center;
-        transition: all 0.3s ease;
-        backdrop-filter: blur(10px);
       }
 
       button:hover {
-        background: rgba(74, 144, 226, 1);
-        transform: scale(1.05);
+        background: rgba(255, 255, 255, 0.2);
       }
 
       button.active {
         background: #4a90e2;
         border-color: #4a90e2;
-        box-shadow: 0 0 20px rgba(74, 144, 226, 0.6);
       }
     }
 
@@ -157,29 +140,24 @@ export class GdmLiveAudio extends LitElement {
       justify-content: center;
       margin-bottom: 10px;
       color: white;
-      background: rgba(0, 0, 0, 0.4);
+      background: rgba(255, 255, 255, 0.1);
       border-radius: 8px;
-      padding: 12px 16px;
-      border: 2px solid rgba(74, 144, 226, 0.5);
-      backdrop-filter: blur(10px);
+      padding: 8px 12px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
     }
 
     .control-group label {
       font-weight: bold;
-      color: white;
-      text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.7);
     }
 
     .control-group select,
     .control-group button {
-      background: rgba(0, 0, 0, 0.3);
+      background: transparent;
       color: white;
-      border: 1px solid rgba(74, 144, 226, 0.5);
+      border: none;
       font-size: 16px;
       cursor: pointer;
       outline: none;
-      border-radius: 4px;
-      padding: 4px 8px;
     }
 
     .control-group select {
@@ -188,19 +166,20 @@ export class GdmLiveAudio extends LitElement {
       appearance: none;
       background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
       background-repeat: no-repeat;
-      background-position: right 8px center;
+      background-position: right 0 center;
       background-size: 1em;
-      padding-right: 2em;
+      padding-right: 1.5em;
     }
 
     .control-group button {
+      padding: 4px 8px;
+      border-radius: 4px;
+      border: 1px solid rgba(255, 255, 255, 0.3);
       margin-left: 8px;
-      transition: all 0.3s ease;
     }
 
     .control-group button:hover {
-      background: rgba(74, 144, 226, 0.7);
-      border-color: #4a90e2;
+      background: rgba(255, 255, 255, 0.2);
     }
 
     .control-group select:disabled {
@@ -488,79 +467,6 @@ export class GdmLiveAudio extends LitElement {
       overflow: hidden;
       text-overflow: ellipsis;
     }
-
-    /* Simple CSS Visualizer */
-    .simple-visualizer {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      pointer-events: none;
-      z-index: 1;
-    }
-
-    .audio-wave {
-      position: relative;
-      width: 200px;
-      height: 200px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .wave-circle {
-      position: absolute;
-      border: 2px solid rgba(74, 144, 226, 0.3);
-      border-radius: 50%;
-      background: radial-gradient(circle, rgba(74, 144, 226, 0.1) 0%, transparent 70%);
-    }
-
-    .wave-circle:nth-child(1) {
-      width: 60px;
-      height: 60px;
-      animation: pulse 2s ease-in-out infinite;
-    }
-
-    .wave-circle.wave-2 {
-      width: 120px;
-      height: 120px;
-      animation: pulse 2s ease-in-out infinite 0.5s;
-    }
-
-    .wave-circle.wave-3 {
-      width: 180px;
-      height: 180px;
-      animation: pulse 2s ease-in-out infinite 1s;
-    }
-
-    .audio-wave.recording .wave-circle {
-      border-color: rgba(255, 100, 100, 0.6);
-      background: radial-gradient(circle, rgba(255, 100, 100, 0.2) 0%, transparent 70%);
-      animation-duration: 1s;
-    }
-
-    .audio-wave.recording .wave-circle:nth-child(1) {
-      box-shadow: 0 0 20px rgba(255, 100, 100, 0.4);
-    }
-
-    @keyframes pulse {
-      0% {
-        transform: scale(0.8);
-        opacity: 1;
-      }
-      50% {
-        transform: scale(1.2);
-        opacity: 0.6;
-      }
-      100% {
-        transform: scale(0.8);
-        opacity: 1;
-      }
-    }
   `;
 
   constructor() {
@@ -576,20 +482,35 @@ export class GdmLiveAudio extends LitElement {
   private async initClient() {
     this.initAudio();
 
-    // FIX: Use process.env.API_KEY per coding guidelines.
-    this.client = new GoogleGenAI({
-      apiKey: process.env.API_KEY,
-    });
+    try {
+      // Check if API key exists
+      if (!process.env.API_KEY || process.env.API_KEY === 'your_gemini_api_key_here') {
+        throw new Error('Please set your Gemini API key in the .env file');
+      }
 
-    this.outputNode.connect(this.outputAudioContext.destination);
+      // FIX: Use process.env.API_KEY per coding guidelines.
+      this.client = new GoogleGenAI({
+        apiKey: process.env.API_KEY,
+      });
 
-    this.initSession();
+      this.outputNode.connect(this.outputAudioContext.destination);
+
+      await this.initSession();
+    } catch (e) {
+      console.error('Client initialization failed:', e);
+      this.updateError(`Initialization failed: ${e.message}`);
+    }
   }
 
   private async initSession() {
     const model = 'gemini-2.5-flash';
+    this.updateStatus('Initializing session...');
 
     try {
+      // Check if API key is available
+      if (!process.env.API_KEY) {
+        throw new Error('API_KEY not found in environment variables. Please check your .env file.');
+      }
       const config: any = {
         systemInstruction: this.selectedPersonality?.prompt,
         responseModalities: [Modality.AUDIO],
@@ -663,8 +584,9 @@ export class GdmLiveAudio extends LitElement {
         config: config,
       });
     } catch (e) {
-      console.error(e);
-      this.updateError(e.message);
+      console.error('Session initialization failed:', e);
+      this.session = null; // Make sure session is null on error
+      this.updateError(`Failed to initialize session: ${e.message}`);
     }
   }
 
@@ -680,6 +602,12 @@ export class GdmLiveAudio extends LitElement {
 
   private async startRecording() {
     if (this.isRecording) {
+      return;
+    }
+
+    // Check if session is ready
+    if (!this.session) {
+      this.updateError('Session not ready. Please wait and try again.');
       return;
     }
 
@@ -742,7 +670,12 @@ export class GdmLiveAudio extends LitElement {
           }
         }
 
-        this.session.sendRealtimeInput({media: createBlob(pcmData)});
+        // Check if session is ready before sending audio
+        if (this.session && this.session.sendRealtimeInput) {
+          this.session.sendRealtimeInput({media: createBlob(pcmData)});
+        } else {
+          console.warn('Session not ready, skipping audio data');
+        }
       };
 
       this.sourceNode.connect(this.scriptProcessorNode);
@@ -1260,13 +1193,11 @@ export class GdmLiveAudio extends LitElement {
         </div>
 
         <div id="status">${this.error || this.status}</div>
-        <div class="simple-visualizer ${this.isArModeActive ? 'ar-active-visualizer' : ''}">
-          <div class="audio-wave ${this.isRecording ? 'recording' : ''}">
-            <div class="wave-circle"></div>
-            <div class="wave-circle wave-2"></div>
-            <div class="wave-circle wave-3"></div>
-          </div>
-        </div>
+        <gdm-live-audio-visuals-3d
+          class=${this.isArModeActive ? 'ar-active-visualizer' : ''}
+          .inputNode=${this.inputNode}
+          .outputNode=${this.outputNode}
+        ></gdm-live-audio-visuals-3d>
       </div>
     `;
   }
