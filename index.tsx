@@ -32,6 +32,7 @@ export class GdmLiveAudio extends LitElement {
 
   private client: GoogleGenAI;
   private session: Session;
+  private sessionReady: boolean = false;
   // FIX: Cast window to any to access legacy webkitAudioContext
   private inputAudioContext = new (window.AudioContext ||
     (window as any).webkitAudioContext)({sampleRate: 16000});
@@ -527,7 +528,8 @@ export class GdmLiveAudio extends LitElement {
         model: model,
         callbacks: {
           onopen: () => {
-            this.updateStatus('Session connected');
+            this.sessionReady = true;
+            this.updateStatus('Session connected and ready');
           },
           onmessage: async (message: LiveServerMessage) => {
             const audio =
@@ -575,9 +577,11 @@ export class GdmLiveAudio extends LitElement {
             }
           },
           onerror: (e: ErrorEvent) => {
+            this.sessionReady = false;
             this.updateError(e.message);
           },
           onclose: (e: CloseEvent) => {
+            this.sessionReady = false;
             this.updateStatus('Session closed');
           },
         },
@@ -586,6 +590,7 @@ export class GdmLiveAudio extends LitElement {
     } catch (e) {
       console.error('Session initialization failed:', e);
       this.session = null; // Make sure session is null on error
+      this.sessionReady = false;
       this.updateError(`Failed to initialize session: ${e.message}`);
     }
   }
@@ -606,7 +611,7 @@ export class GdmLiveAudio extends LitElement {
     }
 
     // Check if session is ready
-    if (!this.session) {
+    if (!this.session || !this.sessionReady) {
       this.updateError('Session not ready. Please wait and try again.');
       return;
     }
@@ -671,8 +676,17 @@ export class GdmLiveAudio extends LitElement {
         }
 
         // Check if session is ready before sending audio
-        if (this.session && this.session.sendRealtimeInput) {
-          this.session.sendRealtimeInput({media: createBlob(pcmData)});
+        if (this.session && this.sessionReady && this.session.sendRealtimeInput) {
+          try {
+            this.session.sendRealtimeInput({media: createBlob(pcmData)});
+          } catch (error) {
+            console.warn('Failed to send audio data:', error);
+            if (error.message.includes('CLOSING') || error.message.includes('CLOSED')) {
+              this.sessionReady = false;
+              this.stopRecording();
+              this.updateError('Connection lost. Please try again.');
+            }
+          }
         } else {
           console.warn('Session not ready, skipping audio data');
         }
@@ -721,6 +735,7 @@ export class GdmLiveAudio extends LitElement {
   }
 
   private reset() {
+    this.sessionReady = false;
     this.session?.close();
     this.groundingChunks = [];
     this.initSession();
@@ -833,7 +848,7 @@ export class GdmLiveAudio extends LitElement {
   }
 
   private captureAndSendFrame() {
-    if (!this.isArModeActive || !this.videoElement || !this.session) return;
+    if (!this.isArModeActive || !this.videoElement || !this.session || !this.sessionReady) return;
 
     const context = this.canvasElement!.getContext('2d');
     if (context) {
@@ -849,9 +864,18 @@ export class GdmLiveAudio extends LitElement {
       const dataUrl = this.canvasElement.toDataURL('image/jpeg', 0.5);
       const [, base64Data] = dataUrl.split(',');
 
-      (this.session as any).sendTurn({
-        parts: [{inlineData: {data: base64Data, mimeType: 'image/jpeg'}}],
-      });
+      try {
+        (this.session as any).sendTurn({
+          parts: [{inlineData: {data: base64Data, mimeType: 'image/jpeg'}}],
+        });
+      } catch (error) {
+        console.warn('Failed to send frame data:', error);
+        if (error.message.includes('CLOSING') || error.message.includes('CLOSED')) {
+          this.sessionReady = false;
+          this.stopArMode();
+          this.updateError('Connection lost during AR mode. Please try again.');
+        }
+      }
     }
   }
 
